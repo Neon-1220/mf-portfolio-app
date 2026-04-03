@@ -22,9 +22,12 @@ if raw_text.strip():
     # 入力テキストにタブが含まれていればタブ区切り、それ以外はカンマ区切りと判定
     sep = '\t' if '\t' in raw_text else ','
     
+    # コピー元の表（楽天証券など）の仕様で、ヘッダー行が「改行＋タブ」で崩れる問題を補正
+    cleaned_text = raw_text.replace('\n\t', '\t')
+    
     try:
-        # 文字列をデータフレームとして読み込み
-        df = pd.read_csv(io.StringIO(raw_text), sep=sep)
+        # 文字列をデータフレームとして読み込み。念のためフォーマットの異なる行はスキップ
+        df = pd.read_csv(io.StringIO(cleaned_text), sep=sep, on_bad_lines='skip', engine='python')
         
         st.write("### 📋 読み込んだデータ（プレビュー）")
         st.dataframe(df)
