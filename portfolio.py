@@ -120,6 +120,9 @@ if raw_text.strip():
 2. 現在の資産配分における『弱点やリスク（特定の業界への過剰な偏りなど）』を指摘してください。
 3. リスク分散のために、次に購入を検討すべきおすすめのセクターや投資戦略を提案してください。
 
+【出力形式の厳守事項】
+結果は必ずMarkdownの表（テーブル）形式を用いて、見やすく構造化して出力してください。箇条書きのみの単調な出力は避けてください。
+
 【ポートフォリオデータ】
 {portfolio_str}"""
                                 
@@ -130,7 +133,7 @@ if raw_text.strip():
                                 )
                                 
                                 # 結果を美しく表示
-                                st.info(response.text)
+                                st.markdown(response.text)
                                 
                             except Exception as e:
                                 st.error(f"Gemini API呼び出し中にエラーが発生しました: {e}")
