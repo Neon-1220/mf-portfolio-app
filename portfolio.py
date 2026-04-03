@@ -75,8 +75,27 @@ if raw_text.strip():
                 else:
                     st.write("---")
                     st.write("### 🥧 ポートフォリオ資産割合")
-                    # Plotlyによる円グラフ描画 (ダークテーマ)
-                    fig = px.pie(df_clean, names=name_col, values=val_col, template='plotly_dark')
+                    
+                    # 銘柄数が多すぎる場合に見づらくなるのを防ぐため、全体の1%未満の銘柄を「その他」にまとめる
+                    total_val = df_clean[val_col].sum()
+                    threshold = total_val * 0.02 # 2%未満をまとめる
+                    
+                    df_large = df_clean[df_clean[val_col] >= threshold]
+                    df_small = df_clean[df_clean[val_col] < threshold]
+                    
+                    if not df_small.empty:
+                        other_row = pd.DataFrame([{name_col: 'その他', val_col: df_small[val_col].sum()}])
+                        df_plot = pd.concat([df_large, other_row], ignore_index=True)
+                    else:
+                        df_plot = df_clean.copy()
+
+                    # Plotlyによる円グラフ描画 (ダークテーマ・ドーナツ型)
+                    fig = px.pie(df_plot, names=name_col, values=val_col, template='plotly_dark', hole=0.4)
+                    
+                    # テキストを内側に配置し、はみ出すほど小さい項目はラベルを非表示にする
+                    fig.update_traces(textposition='inside', textinfo='percent+label')
+                    fig.update_layout(uniformtext_minsize=10, uniformtext_mode='hide', showlegend=False)
+                    
                     st.plotly_chart(fig, use_container_width=True)
                     
                     st.write("---")
