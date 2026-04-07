@@ -148,8 +148,14 @@ if raw_text.strip():
                     else:
                         with st.spinner("AIがポートフォリオを分析中です..."):
                             try:
-                                # 最新のgenai SDKクライアント初期化
-                                client = genai.Client(api_key=gemini_key)
+                                # 最新のgenai SDKクライアント初期化（セッションに保持して切断エラーを回避）
+                                client_changed = False
+                                if 'gemini_client' not in st.session_state or st.session_state.get('gemini_api_key') != gemini_key:
+                                    st.session_state.gemini_client = genai.Client(api_key=gemini_key)
+                                    st.session_state.gemini_api_key = gemini_key
+                                    client_changed = True
+                                
+                                client = st.session_state.gemini_client
                                 
                                 # ポートフォリオデータを文字列にフォーマット
                                 portfolio_str = ""
@@ -184,7 +190,7 @@ if raw_text.strip():
                                 st.markdown(st.session_state['analysis_report'])
                                 
                                 # 3. チャットセッションと前提知識の初期化
-                                if 'chat_session' not in st.session_state or st.session_state.get('chat_portfolio') != portfolio_str:
+                                if 'chat_session' not in st.session_state or st.session_state.get('chat_portfolio') != portfolio_str or client_changed:
                                     # チャットセッション作成
                                     st.session_state.chat_session = client.chats.create(model="gemini-2.5-flash")
                                     # 初回メッセージ送信（非表示）
