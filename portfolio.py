@@ -191,11 +191,14 @@ if raw_text.strip():
                                 
                                 # 3. チャットセッションと前提知識の初期化
                                 if 'chat_session' not in st.session_state or st.session_state.get('chat_portfolio') != portfolio_str or client_changed:
-                                    # チャットセッション作成
-                                    st.session_state.chat_session = client.chats.create(model="gemini-2.5-flash")
-                                    # 初回メッセージ送信（非表示）
+                                    # 初期化時の無駄な1リクエスト消費を防ぐため、system_instructionを利用する
                                     init_prompt = f"以下のポートフォリオデータを前提として、ユーザーからの投資相談に乗ってください。\n{portfolio_str}"
-                                    st.session_state.chat_session.send_message(init_prompt)
+                                    
+                                    # チャットセッション作成
+                                    st.session_state.chat_session = client.chats.create(
+                                        model="gemini-2.5-flash",
+                                        config={"system_instruction": init_prompt}
+                                    )
                                     # 会話履歴の初期化
                                     st.session_state.messages = []
                                     st.session_state['chat_portfolio'] = portfolio_str
