@@ -15,7 +15,7 @@ st.markdown("""
     position: sticky;
     top: 3rem;
     z-index: 99;
-    background-color: #0E1117;
+    background-color: var(--primary-background-color);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -212,27 +212,33 @@ if raw_text.strip():
             if 'chat_session' not in st.session_state:
                 st.info("タブ1で表データを読み込み、「分析を実行」してください。AIがポートフォリオを把握した後にチャットが開始できます。")
             else:
+                # チャット領域用コンテナを設定
+                chat_container = st.container(height=500, border=True)
+
                 # ユーザーの会話履歴を表示
-                for msg in st.session_state.messages:
-                    with st.chat_message(msg["role"]):
-                        st.markdown(msg["content"])
+                with chat_container:
+                    for msg in st.session_state.messages:
+                        with st.chat_message(msg["role"]):
+                            st.markdown(msg["content"])
                         
                 # チャット入力
                 if user_input := st.chat_input("投資に関する質問や相談を入力してください（例：○○銘柄は利確すべき？）："):
                     # ユーザーの入力を表示して履歴へ追加
-                    with st.chat_message("user"):
-                        st.markdown(user_input)
+                    with chat_container:
+                        with st.chat_message("user"):
+                            st.markdown(user_input)
                     st.session_state.messages.append({"role": "user", "content": user_input})
                     
                     # AIの応答を取得して表示し、履歴へ追加
-                    with st.chat_message("assistant"):
-                        with st.spinner("AIが考え中..."):
-                            try:
-                                chat_response = st.session_state.chat_session.send_message(user_input)
-                                st.markdown(chat_response.text)
-                                st.session_state.messages.append({"role": "assistant", "content": chat_response.text})
-                            except Exception as e:
-                                st.error(f"チャットAPI呼び出し中にエラーが発生しました: {e}")
+                    with chat_container:
+                        with st.chat_message("assistant"):
+                            with st.spinner("AIが考え中..."):
+                                try:
+                                    chat_response = st.session_state.chat_session.send_message(user_input)
+                                    st.markdown(chat_response.text)
+                                    st.session_state.messages.append({"role": "assistant", "content": chat_response.text})
+                                except Exception as e:
+                                    st.error(f"チャットAPI呼び出し中にエラーが発生しました: {e}")
             
     except Exception as e:
         with tab1:
