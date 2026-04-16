@@ -60,10 +60,21 @@ with st.expander("📖 アプリの使い方（初めての方へ）", expanded=
 # タブ切り替え時に状態を維持するためのセッションステート
 if 'run_analysis' not in st.session_state:
     st.session_state['run_analysis'] = False
+if 'raw_text' not in st.session_state:
+    st.session_state['raw_text'] = ""
+if 'name_col' not in st.session_state:
+    st.session_state['name_col'] = None
+if 'val_col' not in st.session_state:
+    st.session_state['val_col'] = None
+if 'profit_col' not in st.session_state:
+    st.session_state['profit_col'] = None
 
 if page == "📋 データ入力・設定":
     # テキストエリア配置
-    raw_text = st.text_area("マネーフォワードや証券会社の『保有銘柄一覧』の表をコピーして、ここに貼り付けてください", height=200)
+    raw_text = st.text_area("マネーフォワードや証券会社の『保有銘柄一覧』の表をコピーして、ここに貼り付けてください", value=st.session_state['raw_text'], height=200)
+    st.session_state['raw_text'] = raw_text
+else:
+    raw_text = st.session_state['raw_text']
 
 if raw_text.strip():
     # 入力テキストにタブが含まれていればタブ区切り、それ以外はカンマ区切りと判定
@@ -84,15 +95,28 @@ if raw_text.strip():
             if not df.empty and len(df.columns) >= 3:
                 # カラム選択のドロップダウンを3列で配置
                 col1, col2, col3 = st.columns(3)
-                name_col = col1.selectbox("銘柄名・ティッカーの列を選択", df.columns, index=0 if len(df.columns) > 0 else 0)
-                val_col = col2.selectbox("評価額（現在価値）の列を選択", df.columns, index=1 if len(df.columns) > 1 else 0)
-                profit_col = col3.selectbox("評価損益（含み益・含み損）の列を選択", df.columns, index=2 if len(df.columns) > 2 else 0)
+                
+                idx_n = list(df.columns).index(st.session_state['name_col']) if st.session_state['name_col'] in df.columns else (0 if len(df.columns) > 0 else 0)
+                idx_v = list(df.columns).index(st.session_state['val_col']) if st.session_state['val_col'] in df.columns else (1 if len(df.columns) > 1 else 0)
+                idx_p = list(df.columns).index(st.session_state['profit_col']) if st.session_state['profit_col'] in df.columns else (2 if len(df.columns) > 2 else 0)
+                
+                name_col = col1.selectbox("銘柄名・ティッカーの列を選択", df.columns, index=idx_n)
+                val_col = col2.selectbox("評価額（現在価値）の列を選択", df.columns, index=idx_v)
+                profit_col = col3.selectbox("評価損益（含み益・含み損）の列を選択", df.columns, index=idx_p)
+                
+                st.session_state['name_col'] = name_col
+                st.session_state['val_col'] = val_col
+                st.session_state['profit_col'] = profit_col
                 
                 # 分析実行ボタン
                 if st.button("🚀 分析を実行"):
                     st.session_state['run_analysis'] = True
             else:
                 st.warning("表データとして正しく読み込めませんでした。3つ以上の列が含まれているか確認してください。")
+        else:
+            name_col = st.session_state['name_col']
+            val_col = st.session_state['val_col']
+            profit_col = st.session_state['profit_col']
         
         # 分析実行後の処理（タブ2とタブ3への影響）
         if st.session_state['run_analysis'] and not df.empty and len(df.columns) >= 3:
