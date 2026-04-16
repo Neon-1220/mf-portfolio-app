@@ -34,23 +34,16 @@ st.markdown("""
 .block-container {
     padding-top: 2rem !important;
 }
-
-/* タブメニューを画面の最上部に強力に固定する */
-div[data-testid="stTabs"] > div:first-child {
-    position: sticky;
-    top: 0;
-    background-color: var(--primary-background-color);
-    z-index: 9999;
-    padding-top: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
 </style>
 """, unsafe_allow_html=True)
 
 # サイドバー設定
 st.sidebar.title("設定")
 gemini_key = st.sidebar.text_input("Gemini APIキー", type="password")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("メニュー")
+page = st.sidebar.radio("画面を選択", ["📋 データ入力・設定", "📊 診断レポート", "💬 AI投資相談チャット"])
 
 # メイン画面タイトル
 st.title("📊 AIポートフォリオ診断ダッシュボード")
@@ -59,19 +52,16 @@ with st.expander("📖 アプリの使い方（初めての方へ）", expanded=
     st.markdown("""
     1. **APIキーの設定**: 左側のサイドバーにGemini APIキーを入力してください。
     2. **表のコピー**: マネーフォワードや証券会社（楽天証券など）の画面を開き、「保有銘柄と評価額」が載っている表全体を文字選択してコピーします。
-    3. **データの貼り付け**: 「データ入力・設定」タブのテキストエリアにそのまま貼り付けます。
+    3. **データの貼り付け**: サイドバーのメニューから「データ入力・設定」を選び、テキストエリアにそのまま貼り付けます。
     4. **列の選択（重要！）**: データがプレビューされたら、ドロップダウンから「銘柄名」「評価額」「評価損益」の列を正しく選んでください。
        - 💡 **データの自動整形について**: 評価額や評価損益の列に「¥」「円」「,」などの文字が含まれていても、**自動で数値データにクレンジング**される設計になっています。
     """)
-
-# 4. タブによるレイアウト分割（3つ目のタブを追加）
-tab1, tab2, tab3 = st.tabs(["📋 データ入力・設定", "📊 診断レポート", "💬 AI投資相談チャット"])
 
 # タブ切り替え時に状態を維持するためのセッションステート
 if 'run_analysis' not in st.session_state:
     st.session_state['run_analysis'] = False
 
-with tab1:
+if page == "📋 データ入力・設定":
     # テキストエリア配置
     raw_text = st.text_area("マネーフォワードや証券会社の『保有銘柄一覧』の表をコピーして、ここに貼り付けてください", height=200)
 
@@ -86,7 +76,7 @@ if raw_text.strip():
         # 文字列をデータフレームとして読み込み。念のためフォーマットの異なる行はスキップ
         df = pd.read_csv(io.StringIO(cleaned_text), sep=sep, on_bad_lines='skip', engine='python')
         
-        with tab1:
+        if page == "📋 データ入力・設定":
             st.write("### 📋 読み込んだデータ（プレビュー）")
             # 3. データプレビュー表の行番号非表示と横幅いっぱいへの拡大
             st.dataframe(df, hide_index=True, use_container_width=True)
@@ -134,10 +124,10 @@ if raw_text.strip():
             df_clean = df_clean[df_clean[val_col] > 0]
             
             if df_clean.empty:
-                with tab1:
+                if page == "📋 データ入力・設定":
                     st.error("有効な数値データが抽出できませんでした。列の選択が正しいか確認してください。")
             else:
-                with tab2:
+                if page == "📊 診断レポート":
                     st.write("### 🥧 ポートフォリオ資産割合")
                     
                     # 銘柄数が多すぎる場合に見づらくなるのを防ぐため、全体の2%未満の銘柄を「その他」にまとめる
@@ -231,11 +221,11 @@ if raw_text.strip():
                             except Exception as e:
                                 st.error(f"Gemini API呼び出し中にエラーが発生しました: {e}")
 
-        # 5. チャットUIの実装（タブ3）
-        with tab3:
+        # 5. チャットUIの実装
+        if page == "💬 AI投資相談チャット":
             st.write("### 💬 AI投資相談チャット")
             if 'chat_session' not in st.session_state:
-                st.info("タブ1で表データを読み込み、「分析を実行」してください。AIがポートフォリオを把握した後にチャットが開始できます。")
+                st.info("「データ入力・設定」画面で表データを読み込み、「分析を実行」してください。AIがポートフォリオを把握した後にチャットが開始できます。")
             else:
                 # チャット領域用コンテナを設定
                 chat_container = st.container(height=500, border=True)
@@ -266,5 +256,5 @@ if raw_text.strip():
                                     st.error(f"チャットAPI呼び出し中にエラーが発生しました: {e}")
             
     except Exception as e:
-        with tab1:
+        if page == "📋 データ入力・設定":
             st.error(f"データのパース中にエラーが発生しました: {e}")
