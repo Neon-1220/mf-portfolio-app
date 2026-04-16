@@ -4,6 +4,20 @@ import plotly.express as px
 import io
 from google import genai
 import re
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+# Gemini API呼び出し用のリトライ処理（Exponential Backoff）
+# 失敗しても、2秒, 4秒, 8秒...と待機しながら最大4回まで自動で再試行します
+@retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10))
+def generate_report_with_retry(client, prompt):
+    return client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt
+    )
+
+@retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10))
+def send_chat_with_retry(chat_session, user_input):
+    return chat_session.send_message(user_input)
 
 # ページレイアウトを「wide」に設定
 st.set_page_config(page_title="AIポートフォリオ診断ダッシュボード", layout="wide")
@@ -146,7 +160,7 @@ if raw_text.strip():
                     if not gemini_key:
                         st.warning("サイドバーにGemini APIキーを入力してください。")
                     else:
-                        with st.spinner("AIがポートフォリオを分析中です..."):
+                        with st.spinner("AIがポートフォリオを分析中です...（混雑時は自動で再試行します）"):
                             try:
                                 # 最新のgenai SDKクライアント初期化（セッションに保持して切断エラーを回避）
                                 client_changed = False
@@ -179,10 +193,7 @@ if raw_text.strip():
                                 
                                 # 分析レポートのキャッシュ処理（チャット入力ごとの再生成を防ぐ）
                                 if 'analysis_report' not in st.session_state or st.session_state.get('last_portfolio') != portfolio_str:
-                                    response = client.models.generate_content(
-                                        model='gemini-2.5-flash',
-                                        contents=prompt
-                                    )
+                                    response = generate_report_with_retry(client, prompt)
                                     st.session_state['analysis_report'] = response.text
                                     st.session_state['last_portfolio'] = portfolio_str
                                 
@@ -232,9 +243,9 @@ if raw_text.strip():
                     # AIの応答を取得して表示し、履歴へ追加
                     with chat_container:
                         with st.chat_message("assistant"):
-                            with st.spinner("AIが考え中..."):
+                            with st.spinner("AIが考え中...（混雑時は自動で再試行します）"):
                                 try:
-                                    chat_response = st.session_state.chat_session.send_message(user_input)
+                                    chat_response = send_chat_with_retry(st.session_state.chat_session, user_input)
                                     st.markdown(chat_response.text)
                                     st.session_state.messages.append({"role": "assistant", "content": chat_response.text})
                                 except Exception as e:
