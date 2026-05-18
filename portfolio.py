@@ -111,6 +111,7 @@ if raw_text.strip():
                 # 分析実行ボタン
                 if st.button("🚀 分析を実行"):
                     st.session_state['run_analysis'] = True
+                    st.success("✅ 準備完了！左のメニューから「📊 診断レポート」を開いて結果を確認してください。")
             else:
                 st.warning("表データとして正しく読み込めませんでした。3つ以上の列が含まれているか確認してください。")
         else:
