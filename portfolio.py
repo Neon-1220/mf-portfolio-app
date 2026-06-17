@@ -5,6 +5,8 @@ import io
 from google import genai
 import re
 from tenacity import retry, stop_after_attempt, wait_exponential
+import yfinance as yf
+from concurrent.futures import ThreadPoolExecutor
 
 # Gemini API呼び出し用のリトライ処理（Exponential Backoff）
 # 失敗しても、2秒, 4秒, 8秒...と待機しながら最大4回まで自動で再試行します
@@ -18,6 +20,50 @@ def generate_report_with_retry(client, prompt):
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10))
 def send_chat_with_retry(chat_session, user_input):
     return chat_session.send_message(user_input)
+
+# 銘柄名からティッカーシンボルを抽出する関数
+def extract_ticker(name_str):
+    name_str = str(name_str).strip()
+    # 4桁の数字（日本株コード）を探す
+    jp_code_match = re.search(r'\b(\d{4})\b', name_str)
+    if jp_code_match:
+        return f"{jp_code_match.group(1)}.T"
+    
+    # 米国株ティッカー（アルファベット大文字のみの1〜5文字）を探す
+    us_ticker_match = re.search(r'\b([A-Z]{1,5})\b', name_str)
+    if us_ticker_match:
+        return us_ticker_match.group(1)
+        
+    return None
+
+# yfinanceから単一銘柄の配当利回りを取得する関数
+def get_dividend_yield(ticker_symbol):
+    if not ticker_symbol:
+        return 0.0
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        info = ticker.info
+        dy = info.get('dividendYield')
+        if dy is None:
+            dy = info.get('trailingAnnualDividendYield')
+        if dy is None:
+            dy = 0.0
+        return float(dy) * 100  # パーセンテージに変換
+    except Exception:
+        return 0.0
+
+# 並列で配当利回りを取得する関数
+def fetch_all_dividend_yields(ticker_symbols):
+    yields = {}
+    unique_tickers = list(set([t for t in ticker_symbols if t]))
+    if not unique_tickers:
+        return yields
+        
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = executor.map(get_dividend_yield, unique_tickers)
+        for ticker, dy in zip(unique_tickers, results):
+            yields[ticker] = dy
+    return yields
 
 # ページレイアウトを「wide」に設定
 st.set_page_config(page_title="AIポートフォリオ診断ダッシュボード", layout="wide")
@@ -148,6 +194,31 @@ if raw_text.strip():
             # 評価額が0以下のものを除外（円グラフ描画エラー防止）
             df_clean = df_clean[df_clean[val_col] > 0]
             
+            if not df_clean.empty:
+                # 配当利回りの一括取得とセッションキャッシュ
+                # 銘柄リストが変わった場合、またはセッションに無い場合に再取得
+                portfolio_names = df_clean[name_col].tolist()
+                portfolio_names_key = "-".join(map(str, portfolio_names))
+                
+                if 'dividend_yields_cache' not in st.session_state or st.session_state.get('dividend_cache_key') != portfolio_names_key:
+                    # 銘柄名からティッカーを抽出
+                    tickers = [extract_ticker(name) for name in portfolio_names]
+                    # ティッカーから配当利回りを並列取得
+                    with st.spinner("配当利回りデータを取得中..."):
+                        yields_map = fetch_all_dividend_yields(tickers)
+                    st.session_state['dividend_yields_cache'] = yields_map
+                    st.session_state['dividend_cache_key'] = portfolio_names_key
+                
+                # 各行に配当利回りと予想配当金を設定
+                yields_map = st.session_state['dividend_yields_cache']
+                
+                def map_yield(name):
+                    ticker = extract_ticker(name)
+                    return yields_map.get(ticker, 0.0) if ticker else 0.0
+                    
+                df_clean['配当利回り(%)'] = df_clean[name_col].apply(map_yield)
+                df_clean['予想配当金(年/円)'] = df_clean[val_col] * (df_clean['配当利回り(%)'] / 100.0)
+            
             if df_clean.empty:
                 if page == "📋 データ入力・設定":
                     st.error("有効な数値データが抽出できませんでした。列の選択が正しいか確認してください。")
@@ -182,6 +253,39 @@ if raw_text.strip():
                     )
                     
                     st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.write("---")
+                    
+                    # 配当サマリーと保有銘柄詳細テーブルの追加
+                    st.write("### 💰 ポートフォリオ配当サマリー")
+                    
+                    # ポートフォリオ全体のメトリクス計算
+                    total_val = df_clean[val_col].sum()
+                    total_dividend = df_clean['予想配当金(年/円)'].sum()
+                    # 加重平均配当利回り
+                    avg_dividend_yield = (total_dividend / total_val * 100.0) if total_val > 0 else 0.0
+                    
+                    col_m1, col_m2 = st.columns(2)
+                    col_m1.metric("予想年間配当金（合計）", f"¥{total_dividend:,.0f}")
+                    col_m2.metric("ポートフォリオ平均配当利回り（加重平均）", f"{avg_dividend_yield:.2f}%")
+                    
+                    st.write("#### 📋 保有銘柄詳細（配当金情報含む）")
+                    # 表示用にフォーマットを整えたデータフレームを作成
+                    df_display = df_clean.copy()
+                    
+                    # 金額やパーセンテージを見やすくフォーマット
+                    df_display['評価額'] = df_display[val_col].map(lambda x: f"¥{x:,.0f}")
+                    df_display['評価損益'] = df_display[profit_col].map(lambda x: f"¥{x:,.0f}" if pd.notna(x) else "¥0")
+                    df_display['配当利回り(%)'] = df_display['配当利回り(%)'].map(lambda x: f"{x:.2f}%")
+                    df_display['予想年間配当金'] = df_display['予想配当金(年/円)'].map(lambda x: f"¥{x:,.0f}")
+                    
+                    # 表示する列だけを抽出してリネーム
+                    df_display_cols = [name_col, '評価額', '評価損益', '配当利回り(%)', '予想年間配当金']
+                    df_display = df_display[df_display_cols]
+                    df_display = df_display.rename(columns={name_col: '銘柄名'})
+                    
+                    # テーブル表示
+                    st.dataframe(df_display, hide_index=True, use_container_width=True)
                     
                     st.write("---")
                     st.write("### 🤖 Gemini AI診断レポート")
